@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --bg: #0a0a0a;
+  --card: #141414;
+  --border: #262626;
+  --accent: #3b82f6;
+  --text: #e5e5e5;
+  --text-muted: #a3a3a3;
+}
+
+@layer base {
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+/* CodeMirror Customization */
+.cm-editor {
+  height: 100% !important;
+  outline: none !important;
+  background-color: #0a0a0a !important;
+}
+
+.cm-scroller {
+  font-family: var(--font-mono) !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+.cm-gutters {
+  background-color: #0d0d0d !important;
+  border-right: 1px solid #1a1a1a !important;
+  color: #404040 !important;
+}
+
+.cm-activeLineGutter {
+  background-color: #1a1a1a !important;
+  color: #808080 !important;
+}
+
+.cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
