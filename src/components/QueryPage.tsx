@@ -220,7 +220,7 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
           let decoded = csvText;
           try {
             const test = atob(csvText);
-            if (test.includes(',') && test.includes('\n')) decoded = test;
+            if (test.includes('\n')) decoded = test;
           } catch {}
           console.log('CSV first 200 chars:', decoded.substring(0, 200));
           const results = parseCsv(decoded);
