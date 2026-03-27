@@ -19,7 +19,10 @@ import {
   Check,
   User,
   LogOut,
-  X
+  X,
+  MoreVertical,
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Panel, Group, Separator } from 'react-resizable-panels';
@@ -72,6 +75,9 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
   const [isUploading, setIsUploading] = useState(false);
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [tables, setTables] = useState<TableInfo[]>([]);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
 
@@ -91,6 +97,13 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
       const data = await res.json();
       if (Array.isArray(data)) {
         setTables(data.map(t => ({ ...t, columns: [] })));
+        // If active tab has no selected table, default to first table
+        const firstName = data.length > 0 ? data[0].name : null;
+        if (firstName) {
+          setTabs(prev => prev.map(t => 
+            t.selectedTable === null ? { ...t, selectedTable: firstName, title: firstName, query: `SELECT * FROM "${firstName}" LIMIT 10;` } : t
+          ));
+        }
       }
     } catch (e) {
       console.error('Failed to fetch tables:', e);
@@ -98,6 +111,14 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
   }, [userId]);
 
   useEffect(() => { fetchTables(); }, [fetchTables]);
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = () => setMenuOpen(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [menuOpen]);
 
   // Fetch columns for a table when expanded
   const fetchColumns = async (tableName: string) => {
@@ -154,16 +175,17 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
   };
 
   const handleNewQuery = () => {
+    const defaultTable = tables.length > 0 ? tables[0].name : '';
     const newTabId = Math.random().toString(36).substring(7);
     setTabs(prev => [...prev, {
       id: newTabId,
-      title: getNextTitle('New Query'),
-      query: '-- Write your query here\n',
+      title: getNextTitle(defaultTable || 'New Query'),
+      query: defaultTable ? `SELECT * FROM "${defaultTable}" LIMIT 10;` : '-- Write your query here\n',
       results: [],
       executionInfo: null,
       isQuerying: false,
       error: null,
-      selectedTable: null
+      selectedTable: defaultTable || null
     }]);
     setActiveTabId(newTabId);
   };
@@ -177,6 +199,46 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
   };
 
   const handleNewTableClick = () => fileInputRef.current?.click();
+
+  const pollUntilReady = (tableName: string, attempts = 0) => {
+    if (attempts > 15) return; // give up after 30s
+    setTimeout(async () => {
+      await fetchTables();
+      const found = tables.find(t => t.name === tableName && t.status === 'READY');
+      if (!found) pollUntilReady(tableName, attempts + 1);
+    }, 2000);
+  };
+
+  const handleDeleteTable = async (tableName: string) => {
+    if (!confirm(`Delete table "${tableName}"? This cannot be undone.`)) return;
+    setMenuOpen(null);
+    try {
+      await fetch(`${API_BASE}/api/tables/${tableName}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      await fetchTables();
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
+  };
+
+  const handleRenameStart = (tableName: string) => {
+    setMenuOpen(null);
+    setRenaming(tableName);
+    setRenameValue(tableName);
+  };
+
+  const handleRenameSubmit = async (oldName: string) => {
+    if (!renameValue.trim() || renameValue === oldName) { setRenaming(null); return; }
+    try {
+      const res = await fetch(`${API_BASE}/api/tables/${oldName}/rename?userId=${encodeURIComponent(userId)}&newName=${encodeURIComponent(renameValue)}`, { method: 'PUT' });
+      const data = await res.json();
+      if (data.error) { alert(data.error); return; }
+      await fetchTables();
+    } catch (e) {
+      console.error('Rename failed:', e);
+    } finally {
+      setRenaming(null);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -195,6 +257,7 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
       if (data.table) {
         await fetchTables();
         handleTableSelect(data.table);
+        pollUntilReady(data.table);
       }
     } catch (error) {
       console.error('Upload failed:', error);
@@ -335,23 +398,56 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
                     <p className="px-3 py-2 text-xs text-neutral-600">No tables yet. Upload a file to get started.</p>
                   )}
                   {tables.map((table) => (
-                    <div key={table.name} className="space-y-0.5">
-                      <button
-                        onClick={() => handleTableSelect(table.name)}
-                        className={cn(
-                          "w-full px-3 py-2 rounded-md text-sm flex items-center group transition-all relative z-10",
-                          table.name === activeTab?.selectedTable ? "bg-blue-500/10 text-blue-400 font-medium" : "hover:bg-neutral-800 text-neutral-400"
-                        )}
-                      >
-                        <div onClick={(e) => toggleTableExpand(e, table.name)} className="p-1 -ml-1 mr-1 hover:bg-neutral-700 rounded transition-colors">
-                          {expandedTables.has(table.name) ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                    <div key={table.name} className="space-y-0.5 relative">
+                      <div className="flex items-center group">
+                        <button
+                          onClick={() => handleTableSelect(table.name)}
+                          className={cn(
+                            "flex-1 px-3 py-2 rounded-md text-sm flex items-center group transition-all relative z-10",
+                            table.name === activeTab?.selectedTable ? "bg-blue-500/10 text-blue-400 font-medium" : "hover:bg-neutral-800 text-neutral-400"
+                          )}
+                        >
+                          <div onClick={(e) => toggleTableExpand(e, table.name)} className="p-1 -ml-1 mr-1 hover:bg-neutral-700 rounded transition-colors">
+                            {expandedTables.has(table.name) ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                          </div>
+                          <TableIcon className="w-4 h-4 mr-2 opacity-70 shrink-0" />
+                          {renaming === table.name ? (
+                            <input
+                              autoFocus
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(table.name); if (e.key === 'Escape') setRenaming(null); }}
+                              onBlur={() => handleRenameSubmit(table.name)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="bg-neutral-800 border border-neutral-700 rounded px-1 py-0.5 text-sm text-white outline-none flex-1 min-w-0"
+                            />
+                          ) : (
+                            <span className="truncate flex-1 text-left">{table.name}</span>
+                          )}
+                          {table.status !== 'READY' && (
+                            <span className="text-[10px] text-yellow-500 ml-1">{table.status}</span>
+                          )}
+                        </button>
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === table.name ? null : table.name); }}
+                            className="p-1.5 text-neutral-600 hover:text-neutral-300 opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-all rounded hover:bg-neutral-800"
+                            style={{ opacity: menuOpen === table.name ? 1 : undefined }}
+                          >
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
+                          {menuOpen === table.name && (
+                            <div className="absolute right-0 top-8 z-50 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[140px]">
+                              <button onClick={() => handleRenameStart(table.name)} className="w-full px-3 py-2 text-left text-xs text-neutral-300 hover:bg-neutral-700 flex items-center">
+                                <Pencil className="w-3 h-3 mr-2" />Rename
+                              </button>
+                              <button onClick={() => handleDeleteTable(table.name)} className="w-full px-3 py-2 text-left text-xs text-red-400 hover:bg-neutral-700 flex items-center">
+                                <Trash2 className="w-3 h-3 mr-2" />Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <TableIcon className="w-4 h-4 mr-2 opacity-70 shrink-0" />
-                        <span className="truncate flex-1 text-left">{table.name}</span>
-                        {table.status !== 'READY' && (
-                          <span className="text-[10px] text-yellow-500 ml-1">{table.status}</span>
-                        )}
-                      </button>
+                      </div>
 
                       {expandedTables.has(table.name) && (
                         <div className="ml-9 space-y-1 py-1 border-l border-neutral-800">
@@ -445,7 +541,7 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
                           RESULTS
                         </div>
                         {activeTab?.executionInfo && (
-                          <span className="text-[10px] text-neutral-600 font-mono">Executed in {activeTab.executionInfo.time}</span>
+                          <span className="text-[10px] text-neutral-600 font-mono">Executed in {formatTime(activeTab.executionInfo.time)}</span>
                         )}
                       </div>
                       {activeTab?.executionInfo && (
@@ -520,6 +616,12 @@ export default function QueryPage({ initialData, userEmail, onSignOut }: QueryPa
 }
 
 // Simple CSV parser
+function formatTime(time: string): string {
+  const ms = parseInt(time.replace('ms', ''));
+  if (isNaN(ms)) return time;
+  return (ms / 1000).toFixed(2) + 's';
+}
+
 function parseCsv(text: string): Record<string, string>[] {
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
