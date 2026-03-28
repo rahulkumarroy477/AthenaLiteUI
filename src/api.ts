@@ -1,1 +1,1 @@
-export const API_BASE = 'https://fs9figu3nf.execute-api.ap-south-1.amazonaws.com/dev';
+export const API_BASE = import.meta.env.VITE_API_BASE;
